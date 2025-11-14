@@ -1,43 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>10 Minutes Till Dawn</title>
+<title>Diagnostic — 10 Minutes Till Dawn</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;justify-content:center}
-  #unity-container{width:100%;max-width:1200px;aspect-ratio:1200/675;background:#000;border-radius:10px;overflow:hidden;position:relative}
-  #gameContainer{width:100%;height:100%;position:absolute;inset:0}
-  #gameContainer canvas{width:100%!important;height:100%!important}
-  .loadingText{color:#fff;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Arial}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0b0b0b;color:#ddd}
+  .wrap{max-width:980px;margin:28px auto;padding:20px}
+  h1{color:#fff;margin:0 0 8px;font-size:20px}
+  .box{background:#121212;border:1px solid #222;padding:14px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.6);margin-top:12px}
+  .ok{color:#9be88a}
+  .err{color:#ff7a7a}
+  pre{white-space:pre-wrap;color:#cfcfcf;background:#080808;padding:10px;border-radius:6px;overflow:auto;max-height:240px}
+  a.link{color:#7ec8ff}
+  #gameRoot{margin-top:18px;border-radius:8px;overflow:hidden}
+  #unity-container{width:100%;height:540px;background:#000;display:flex;align-items:center;justify-content:center}
 </style>
-<script src="https://cdn.jsdelivr.net/gh/a456pur/seraph@ae2fcc6d6a9cd051654fcc0519080db1f79cf2a7/games/10minutestilldawn/Build/UnityLoader.js"></script>
 </head>
 <body>
-<div id="unity-container" role="application" aria-label="Unity game">
-  <div id="gameContainer"><div class="loadingText">Loading…</div></div>
+<div class="wrap">
+  <h1>Diagnostic loader for <strong>10 Minutes Till Dawn</strong></h1>
+  <div class="box">
+    <div><strong>UnityLoader script URL:</strong></div>
+    <div id="loaderUrl" style="margin-top:6px;color:#cfcfcf"></div>
+    <div id="loaderStatus" style="margin-top:8px"></div>
+  </div>
+
+  <div class="box">
+    <div><strong>Build JSON URL:</strong></div>
+    <div id="jsonUrl" style="margin-top:6px;color:#cfcfcf"></div>
+    <div id="jsonStatus" style="margin-top:8px"></div>
+    <div id="jsonPreview" style="margin-top:8px"></div>
+  </div>
+
+  <div class="box">
+    <div><strong>Attempt to instantiate Unity (if everything OK):</strong></div>
+    <div id="instantiateStatus" style="margin-top:8px"></div>
+    <div id="instantiateError" style="margin-top:8px"></div>
+  </div>
+
+  <div class="box" id="gameRoot">
+    <div><strong>Game area (if instantiate succeeds):</strong></div>
+    <div id="unity-container"><div style="color:#999">No game yet</div></div>
+  </div>
+
+  <div style="margin-top:14px;color:#9aa">If you see errors below, copy the full texts and paste here so I can fix them for you.</div>
+  <pre id="log"></pre>
 </div>
+
 <script>
 (function(){
-  var jsonUrl = "https://rawcdn.githack.com/a456pur/seraph/ae2fcc6d6a9cd051654fcc0519080db1f79cf2a7/games/10minutestilldawn/Build/10MinutesTillDawnWebGL.json";
-  function tryInstantiate(){
-    if(typeof UnityLoader === "undefined"){ return setTimeout(tryInstantiate,150); }
+  // --- CONFIG: put the same loader + json URLs you used earlier ---
+  const LOADER_URL = "https://cdn.jsdelivr.net/gh/a456pur/seraph@ae2fcc6d6a9cd051654fcc0519080db1f79cf2a7/games/10minutestilldawn/Build/UnityLoader.js";
+  const JSON_URL   = "https://rawcdn.githack.com/a456pur/seraph/ae2fcc6d6a9cd051654fcc0519080db1f79cf2a7/games/10minutestilldawn/Build/10MinutesTillDawnWebGL.json";
+
+  // show URLs
+  document.getElementById('loaderUrl').textContent = LOADER_URL;
+  document.getElementById('jsonUrl').textContent = JSON_URL;
+
+  function log(msg){ const p = document.getElementById('log'); p.textContent += msg + "\\n"; }
+  function showStatus(id, ok, text){ const el = document.getElementById(id); el.innerHTML = (ok?('<span class=\"ok\">OK</span> '):('<span class=\"err\">ERROR</span> ')) + "<span style='margin-left:8px;color:#cfcfcf'>"+text+"</span>"; }
+
+  // 1) Try to load UnityLoader script dynamically and detect success/error
+  log("Loading UnityLoader.js...");
+  const script = document.createElement('script');
+  script.src = LOADER_URL;
+  script.defer = true;
+  script.onload = function(){
+    showStatus('loaderStatus', true, 'UnityLoader loaded.');
+    log("UnityLoader loaded.");
+    // after loader loads, continue check JSON
+    checkJson();
+  };
+  script.onerror = function(ev){
+    showStatus('loaderStatus', false, 'Failed to load UnityLoader.js (network/CORS/file not found).');
+    log("UnityLoader failed to load. Check the LOADER_URL or network. Error object: " + JSON.stringify(ev));
+    // still attempt JSON check so we know that too
+    checkJson();
+  };
+  document.head.appendChild(script);
+
+  // 2) Fetch JSON to check response and CORS
+  function checkJson(){
+    log("Fetching build JSON...");
+    fetch(JSON_URL, { method: 'GET', mode: 'cors' })
+      .then(response => {
+        if(!response.ok){
+          showStatus('jsonStatus', false, 'HTTP ' + response.status + ' ' + response.statusText);
+          log("JSON fetch returned HTTP " + response.status + " " + response.statusText + " (URL: " + JSON_URL + ")");
+          return Promise.reject(new Error('HTTP ' + response.status));
+        }
+        showStatus('jsonStatus', true, 'JSON reachable (HTTP ' + response.status + ').');
+        log("JSON reachable. Now reading small preview...");
+        return response.text();
+      })
+      .then(text => {
+        const preview = text.slice(0,1024);
+        document.getElementById('jsonPreview').innerHTML = "<div style='color:#9ef;margin-top:6px;'>Preview (first 1KB):</div><pre>"+escapeHtml(preview)+"</pre>";
+        log("JSON preview loaded (first 1KB).");
+        attemptInstantiate();
+      })
+      .catch(err => {
+        log("JSON fetch error: " + (err && err.message ? err.message : String(err)));
+      });
+  }
+
+  // 3) If loader is available, try instantiate; else show reason
+  function attemptInstantiate(){
+    log("Attempting to instantiate Unity (if loader available)...");
+    const status = document.getElementById('instantiateStatus');
     try{
-      var gameInstance = UnityLoader.instantiate("gameContainer", jsonUrl);
-      // resize canvas to match container pixels
-      function sync(){ try{
-        var rect = document.getElementById('unity-container').getBoundingClientRect();
-        var w = Math.max(1,Math.floor(rect.width)), h = Math.max(1,Math.floor(rect.height));
-        if(gameInstance && gameInstance.container){ gameInstance.container.style.width = w+'px'; gameInstance.container.style.height = h+'px'; }
-        if(gameInstance && gameInstance.Module && gameInstance.Module.canvas){ gameInstance.Module.canvas.style.width = w+'px'; gameInstance.Module.canvas.style.height = h+'px'; }
-      }catch(e){}}
-      setTimeout(sync,600); window.addEventListener('resize',function(){ setTimeout(sync,120); });
+      if(typeof UnityLoader === 'undefined' || !UnityLoader){
+        status.innerHTML = "<span class='err'>UnityLoader not available — cannot instantiate.</span>";
+        log("UnityLoader not available. Skipping instantiate step.");
+        return;
+      }
+      // instantiate - wrap in try/catch to catch runtime errors
+      try{
+        const inst = UnityLoader.instantiate("gameContainer", JSON_URL, {
+          onProgress: function(instance, progress){ /* ignore */ }
+        });
+        status.innerHTML = "<span class='ok'>Instantiate called. Check if game loads below.</span>";
+        log("UnityLoader.instantiate called. Game may initialise (or show errors in console).");
+        // after small delay, check if canvas created
+        setTimeout(function(){
+          try{
+            const canvas = (inst && inst.Module && inst.Module.canvas) ? inst.Module.canvas : document.querySelector('#gameContainer canvas');
+            if(canvas){
+              log("Canvas detected. Game should be visible.");
+            } else {
+              log("Canvas not detected yet. There may be runtime errors. Open browser console (F12) to inspect errors.");
+              document.getElementById('instantiateError').innerText = 'Canvas not detected — check browser console for runtime errors.';
+            }
+          }catch(e){
+            log("Error while checking canvas: " + (e && e.message? e.message : e));
+          }
+        },800);
+      }catch(e){
+        status.innerHTML = "<span class='err'>Instantiate call threw an error.</span>";
+        document.getElementById('instantiateError').textContent = e && e.message ? e.message : String(e);
+        log("Instantiate threw: " + (e && e.message? e.message : e));
+      }
     }catch(e){
-      console.error('Unity instantiate error',e);
-      document.getElementById('gameContainer').innerHTML = '<div style="color:#fff;padding:18px">Game failed to load. Check console.</div>';
+      log("Unexpected error in attemptInstantiate: " + e);
     }
   }
-  tryInstantiate();
+
+  // small util
+  function escapeHtml(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+
 })();
 </script>
 </body>
